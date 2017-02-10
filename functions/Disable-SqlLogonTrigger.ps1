@@ -2,10 +2,10 @@ Function Disable-SqlLogonTrigger
 {
 <#
 .SYNOPSIS
-
+This command will disable SQL Server logon triggers.
 
 .DESCRIPTION
-
+SQL Logon triggers are fired in response to a LOGON event and execute a stored procedure between the authentication and final establishment of the session. They can be used for auditing and/or control of specific logons.
 	
 .PARAMETER SqlServer
 The SQL Server instance. You must have sysadmin access and server version must be SQL Server version 2000 or higher.
@@ -24,7 +24,7 @@ The name of a specific logon trigger to disable.
 Disable all logon triggers not shipped by Microsoft.
 
 .NOTES 
-Original Author: Daniel Alexander (@dansqldba)
+Original Author: Scott Dubose (@dansqldba)
 Further reading: SQL Logon Triggers         - https://msdn.microsoft.com/en-us/library/bb326598.aspx
                  Dedicated Admin Connection - https://msdn.microsoft.com/en-us/library/ms189595.aspx
 
@@ -65,33 +65,52 @@ Disables all user logon triggers, Microsoft shipped triggers are untouched.
 		[parameter(Mandatory = $true, ValueFromPipeline = $true)]
 		[Alias("ServerInstance", "SqlInstance")]
 		[object]$SqlServer,
+		[parameter(Mandatory = $true, ValueFromPipeline = $true)]
+		[Alias("ServerInstance", "SqlInstance")]
+		[object[]]$LogonTriggers,
 		[System.Management.Automation.PSCredential]$SqlCredential,
         [switch]$DisableAll
 	)
-	DynamicParam { if ($sqlserver) { return (Get-ParamSqlServerTriggers -SqlServer $sqlserver -SqlCredential $SourceSqlCredential) } }
+    
+    # todo: this returns all triggers not just logon triggers
+	#DynamicParam { if ($sqlserver) { return (Get-ParamSqlServerTriggers -SqlServer $sqlserver -SqlCredential $SourceSqlCredential) } }
 		
 	BEGIN
 	{
-		
+		if ( $LogonTriggers.Count -eq 0 -and $DisableAll -eq $false )
+		{
+			Write-Warning "You must specify -LogonTriggers or -DisableAll"
+			return
+		}
+
 		Write-Output "Attempting to connect to SQL Server.."
 		
 		$sourceserver = Connect-SqlServer -SqlServer $sqlserver -SqlCredential $SqlCredential
 		$source = $sourceserver.DomainInstanceName
 		
-        $dacenabled = $server.Configuration.RemoteDacConnectionsEnabled.ConfigValue
-
-        # Does your script use something only supported in specific versions? Do a check.
-        # da: SQL Logon triggers might only be supported in 2005 SP2 and above. Worth a check?
-		if ($sourceserver.versionMajor -lt 10 -or $destserver.versionMajor -lt 10)
+		if ($sourceserver.versionMajor -lt 10 )
 		{
-			throw "Collection Sets are only supported in SQL Server 2008 and above. Quitting."
+			throw "SQL Logon Triggers are only supported in SQL Server 2008 and above. Quitting."
 		}
 		
 	}
 	
 	PROCESS
 	{
-		
+			
+	    $sourceserver.Triggers | %  {
+
+            $_.name
+            $_.isenabled
+ 
+            $trigger.IsEnabled = 0
+
+            $trigger.Alter()
+
+            $sourceserver.Alter()
+       } 
+
+ 		
 	}
 	
 	# END is to disconnect from servers and finish up the script. When using the pipeline, things in here will be executed last and only once.
@@ -99,7 +118,7 @@ Disables all user logon triggers, Microsoft shipped triggers are untouched.
 	{
 		If ($Pscmdlet.ShouldProcess("console", "Showing final message"))
 		{
-			Write-Output "SQL Logon Trigger disabled"
+			Write-Output "SQL Logon Trigger(s) disabled"
 		}
 		
 		$sourceserver.ConnectionContext.Disconnect()
