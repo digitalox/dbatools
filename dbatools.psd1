@@ -200,7 +200,8 @@
 		'Get-DbaSpn',
 		'Test-DbaSpn',
 		'Set-DbaSpn',
-		'Remove-DbaSpn'
+		'Remove-DbaSpn',
+		'Disable-SqlLogonTrigger'
 	)
 	
 	<# coming soon

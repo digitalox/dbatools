@@ -6,6 +6,7 @@ This command will disable SQL Server logon triggers.
 
 .DESCRIPTION
 SQL Logon triggers are fired in response to a LOGON event and execute a stored procedure between the authentication and final establishment of the session. They can be used for auditing and/or control of specific logons.
+Care must be taken login triggers as they can prevent all logins to the box; in that case the DAC or starting SQL from the cmd line in single user mode should be used to connect and shut off the rogue trigger.
 	
 .PARAMETER SqlServer
 The SQL Server instance. You must have sysadmin access and server version must be SQL Server version 2000 or higher.
@@ -60,26 +61,36 @@ Disables all user logon triggers, Microsoft shipped triggers are untouched.
 #>
 	
 	# This is a sample. Please continue to use aliases for discoverability. Also keep the [object] type for sqlserver.
-	[CmdletBinding(SupportsShouldProcess = $true)]
+	[CmdletBinding( SupportsShouldProcess = $true )]
 	Param (
-		[parameter(Mandatory = $true, ValueFromPipeline = $true)]
-		[Alias("ServerInstance", "SqlInstance")]
+		[parameter( Mandatory = $true, ValueFromPipeline = $true ) ]
+		[Alias( "ServerInstance", "SqlInstance" ) ]
 		[object]$SqlServer,
-		[parameter(Mandatory = $true, ValueFromPipeline = $true)]
-		[Alias("ServerInstance", "SqlInstance")]
-		[object[]]$LogonTriggers,
-		[System.Management.Automation.PSCredential]$SqlCredential,
-        [switch]$DisableAll
+		[parameter( ParameterSetName = 'SpecificLogonTriggers', ValueFromPipeline = $true ) ]
+		[object[]] $LogonTriggers,
+		[System.Management.Automation.PSCredential] $SqlCredential,
+		[parameter( ParameterSetName = 'setAll' ) ]
+        [switch] $setAll,
+		[parameter( ParameterSetName = 'SpecificLogonTriggers', ValueFromPipeline = $true ) ]
+		[parameter( ParameterSetName = 'setAll', ValueFromPipeline = $true ) ]
+        [Parameter( ParameterSetName=’EnableLogin’ )]
+        [switch] $enable,
+		[parameter( ParameterSetName = 'SpecificLogonTriggers', ValueFromPipeline = $true ) ]
+		[parameter( ParameterSetName = 'setAll', ValueFromPipeline = $true ) ]
+        [Parameter(ParameterSetName=’DisableLogin’)]
+        [switch] $disable
 	)
     
-    # todo: this returns all triggers not just logon triggers
+    # todo: this returns all server triggers not just logon triggers
 	#DynamicParam { if ($sqlserver) { return (Get-ParamSqlServerTriggers -SqlServer $sqlserver -SqlCredential $SourceSqlCredential) } }
 		
 	BEGIN
 	{
-		if ( $LogonTriggers.Count -eq 0 -and $DisableAll -eq $false )
+        Write-Verbose "SqlServer: $SqlServer"
+        Write-Verbose "Parameter Set: $PSCmdlet.ParameterSetName"
+		if ( ( $PSCmdlet.ParameterSetName -eq "SpecificLogonTriggers" -and ( $LogonTriggers -eq $null -or $LogonTriggers.Count -eq 0 ) ) -and $setAll -eq $false )
 		{
-			Write-Warning "You must specify -LogonTriggers or -DisableAll"
+			Write-Error "You must specify -LogonTriggers or -DisableAll"
 			return
 		}
 
@@ -97,19 +108,18 @@ Disables all user logon triggers, Microsoft shipped triggers are untouched.
 	
 	PROCESS
 	{
-			
-	    $sourceserver.Triggers | %  {
+		
+        if ( $setAll ) { $triggers = $sourceserver.Triggers } else { $triggers = $LogonTriggers }
 
-            $_.name
-            $_.isenabled
- 
-            $trigger.IsEnabled = 0
+	    foreach ( $trigger in $triggers )  { 
+		    If ( $Pscmdlet.ShouldProcess( "${trigger}", "Disabling Logon Trigger: ${trigger}") )
+		    {
+                $_.IsEnabled = $enable
+                $_.Alter()
+            }
+        } 
 
-            $trigger.Alter()
-
-            $sourceserver.Alter()
-       } 
-
+        # $sourceserver.Alter()
  		
 	}
 	
