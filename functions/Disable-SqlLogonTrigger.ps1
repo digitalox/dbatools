@@ -25,7 +25,7 @@ The name of a specific logon trigger to disable.
 Disable all logon triggers not shipped by Microsoft.
 
 .NOTES 
-Original Author: Scott Dubose (@dansqldba)
+Author: Scott Dubose (@dansqldba)
 Further reading: SQL Logon Triggers         - https://msdn.microsoft.com/en-us/library/bb326598.aspx
                  Dedicated Admin Connection - https://msdn.microsoft.com/en-us/library/ms189595.aspx
 
@@ -66,31 +66,23 @@ Disables all user logon triggers, Microsoft shipped triggers are untouched.
 		[parameter( Mandatory = $true, ValueFromPipeline = $true ) ]
 		[Alias( "ServerInstance", "SqlInstance" ) ]
 		[object]$SqlServer,
-		[parameter( ParameterSetName = 'SpecificLogonTriggers', ValueFromPipeline = $true ) ]
-		[object[]] $LogonTriggers,
 		[System.Management.Automation.PSCredential] $SqlCredential,
-		[parameter( ParameterSetName = 'setAll' ) ]
-        [switch] $setAll,
-		[parameter( ParameterSetName = 'SpecificLogonTriggers', ValueFromPipeline = $true ) ]
-		[parameter( ParameterSetName = 'setAll', ValueFromPipeline = $true ) ]
-        [Parameter( ParameterSetName=’EnableLogin’ )]
-        [switch] $enable,
-		[parameter( ParameterSetName = 'SpecificLogonTriggers', ValueFromPipeline = $true ) ]
-		[parameter( ParameterSetName = 'setAll', ValueFromPipeline = $true ) ]
-        [Parameter(ParameterSetName=’DisableLogin’)]
-        [switch] $disable
+        [switch] $DisableAll
 	)
     
-    # todo: this returns all server triggers not just logon triggers
-	#DynamicParam { if ($sqlserver) { return (Get-ParamSqlServerTriggers -SqlServer $sqlserver -SqlCredential $SourceSqlCredential) } }
+	DynamicParam { if ($SqlServer) { return (Get-ParamSqlServerLogonTriggers -SqlServer $SqlServer -SqlCredential $SourceSqlCredential) } }
 		
 	BEGIN
 	{
+		$LogonTriggers = $psboundparameters.LogonTriggers
         Write-Verbose "SqlServer: $SqlServer"
-        Write-Verbose "Parameter Set: $PSCmdlet.ParameterSetName"
-		if ( ( $PSCmdlet.ParameterSetName -eq "SpecificLogonTriggers" -and ( $LogonTriggers -eq $null -or $LogonTriggers.Count -eq 0 ) ) -and $setAll -eq $false )
+        Write-Verbose "LogonTriggers: $LogonTriggers"
+        Write-Verbose "LogonTriggers count: $($LogonTriggers.Count)"
+
+
+		if ( ( $LogonTriggers -eq $null -or $LogonTriggers.Count -eq 0 ) -and $DisableAll -eq $false )
 		{
-			Write-Error "You must specify -LogonTriggers or -DisableAll"
+			throw  "You must specify -LogonTriggers or -DisableAll"
 			return
 		}
 
@@ -109,13 +101,18 @@ Disables all user logon triggers, Microsoft shipped triggers are untouched.
 	PROCESS
 	{
 		
-        if ( $setAll ) { $triggers = $sourceserver.Triggers } else { $triggers = $LogonTriggers }
+        if ( $DisableAll ) { 
+            $triggers = $sourceserver.Triggers.Where( { $_.DdlTriggerEvents.Logon -and -not $_.IsSystemObject } ) 
+        } 
+        else { 
+            $triggers = $sourceserver.Triggers.Where( { ( $_.DdlTriggerEvents.Logon ) -and ( -not $_.IsSystemObject ) -and ( $_.Name -in $LogonTriggers ) } )
+        }
 
 	    foreach ( $trigger in $triggers )  { 
 		    If ( $Pscmdlet.ShouldProcess( "${trigger}", "Disabling Logon Trigger: ${trigger}") )
 		    {
-                $_.IsEnabled = $enable
-                $_.Alter()
+                $trigger.IsEnabled = $false
+                $trigger.Alter()
             }
         } 
 

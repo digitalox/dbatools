@@ -2141,3 +2141,50 @@ Function Get-ParamSqlAvailabilityGroups
 	
 	return $newparams
 }
+
+Function Get-ParamSqlServerLogonTriggers
+{
+<#
+ .SYNOPSIS
+ Internal function. Returns System.Management.Automation.RuntimeDefinedParameterDictionary
+ filled with Server Triggers from specified SQL Server.
+#>
+	[CmdletBinding()]
+	param (
+		[Parameter(Mandatory = $true)]
+		[Alias("ServerInstance", "SqlInstance")]
+		[object]$SqlServer,
+		[System.Management.Automation.PSCredential]$SqlCredential
+	)
+	
+	try { $server = Connect-SqlServer -SqlServer $SqlServer -SqlCredential $SqlCredential -ParameterConnection }
+	catch { return }
+	
+	# Populate arrays
+	$triggerlist = @()
+	foreach ($trigger in $server.Triggers.Where( { ( $_.DdlTriggerEvents.Logon ) -and ( -not $_.IsSystemObject ) } ) )
+	{
+		$triggerlist += $trigger.name
+	}
+	
+	# Reusable parameter setup
+	$newparams = New-Object System.Management.Automation.RuntimeDefinedParameterDictionary
+	$attributes = New-Object System.Management.Automation.ParameterAttribute
+	
+	$attributes.ParameterSetName = "__AllParameterSets"
+	$attributes.Mandatory = $false
+	$attributes.Position = 3
+	
+	# Database list parameter setup
+	if ($triggerlist) { $validationset = New-Object System.Management.Automation.ValidateSetAttribute -ArgumentList $triggerlist }
+	$attributeCollection = New-Object -Type System.Collections.ObjectModel.Collection[System.Attribute]
+	$attributeCollection.Add($attributes)
+	if ($triggerlist) { $attributeCollection.Add($validationset) }
+	$LogonTriggers = New-Object -Type System.Management.Automation.RuntimeDefinedParameter("LogonTriggers", [String[]], $attributeCollection)
+	
+	$newparams.Add("LogonTriggers", $LogonTriggers)
+	$server.ConnectionContext.Disconnect()
+	
+	return $newparams
+}
+
